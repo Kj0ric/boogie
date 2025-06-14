@@ -22,6 +22,21 @@ public interface ICarriesAttributes
     tc.GlobalAccessOnlyInOld = false;
     for (QKeyValue kv = this.Attributes; kv != null; kv = kv.Next)
     {
+      /* Harun Yılmaz 06.05.2025 */
+      // Check for ghost attribute on non-variables
+      if (kv.Key == "ghost" && !(this is Variable))
+      {
+          tc.Error(kv, "attribute :ghost can only be used with variables");
+      }
+      /* Harun Yılmaz 06.05.2025 */
+
+      /* Harun Yılmaz 15.05.2025 */
+      if (kv.Key == "ghstbuster" && !(this is AssumeCmd))
+      {
+        tc.Error(kv, "attribute :ghstbuster can only be used with assume commands");
+      }
+      /* Harun Yılmaz 15.05.2025 */
+
       kv.Typecheck(tc);
     }
     tc.GlobalAccessOnlyInOld = oldGlobalAccessOnlyInOld;
@@ -70,4 +85,13 @@ public static class CarriesAttributesExtensions {
       destination.AddStringAttribute(tok, "id", modifier(id).SolverLabel);
     }
   }
+
+  /* Harun Yılmaz 06.05.2025 */
+  public static bool IsGhost(this ICarriesAttributes obj) {
+    // We already ensured that only variables can have the ghost attribute in TypecheckAttributes
+    return obj != null &&
+          obj.Attributes != null &&
+          obj.Attributes.FindBoolAttribute("ghost");
+  }
+  /* Harun Yılmaz 06.05.2025 */
 }

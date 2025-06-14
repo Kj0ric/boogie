@@ -151,6 +151,13 @@ public class QKeyValue : Absy
         expr.Typecheck(tc);
       }
 
+      /* Harun Yılmaz 06.05.2025 */
+      if (Key == "ghost" && Params.Count > 0) {
+        tc.Error(this, "attribute :ghost accepts no arguments");
+        break;
+      }
+      /* Harun Yılmaz 06.05.2025 */
+
       if ((Key == "minimize" || Key == "maximize")
           && (expr == null || !(expr.Type.IsInt || expr.Type.IsReal || expr.Type.IsBv)))
       {

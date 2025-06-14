@@ -15,6 +15,13 @@ public class VariableCollector : ReadOnlyVisitor
     get { return _usedVars.AsEnumerable(); }
   }
 
+  /* Harun Yılmaz 06.05.2025 */
+  // Check if any ghost variables were found
+  public bool ContainsGhostVariables => usedVars.Any(v => v.IsGhost());
+  // Get the names of ghost variables (useful for error messages)
+  public IEnumerable<string> GhostVariableNames => usedVars.Where(v => v.IsGhost()).Select(v => v.Name);
+  /* Harun Yılmaz 06.05.2025 */
+
   protected HashSet<Variable> _oldVarsUsed;
 
   public IEnumerable<Variable> oldVarsUsed
@@ -79,4 +86,12 @@ public class VariableCollector : ReadOnlyVisitor
     }
     return collector.usedVars;
   }
+
+  /* Harun Yılmaz 06.05.2025 */
+  // Helper method to collect ghost variables from an expression
+  public static IEnumerable<Variable> CollectGhostVariables(Expr expr) 
+  {
+    return Collect(expr).Where(v => v.IsGhost());
+  }
+  /* Harun Yılmaz 06.05.2025 */
 }

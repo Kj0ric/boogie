@@ -578,16 +578,38 @@ namespace Microsoft.Boogie
 
       for (int i = 0; i < Lhss.Count; ++i)
       {
+        // First check type compatibility
         Type ltype = Lhss[i].Type;
         Type rtype = Rhss[i].Type;
         if (!ltype.Unify(rtype))
         {
           tc.Error(Lhss[i], "mismatched types in assignment command (cannot assign {0} to {1})", rtype, ltype);
         }
+
+        /* Harun Yılmaz 06.05.2025 */
+        // Now check for ghost variable assignment
+        var lhs = Lhss[i];
+        var rhs = Rhss[i];
+
+        // If LHS is not a ghost variable but RHS references ghost variables, report an error
+        if (lhs.DeepAssignedVariable != null && !lhs.DeepAssignedVariable.IsGhost())
+        {
+          // Check if RHS contains any ghost variables
+          var collector = new VariableCollector();
+          collector.VisitExpr(rhs);
+
+          if (collector.ContainsGhostVariables)
+          {
+            string ghostVars = string.Join(", ", collector.GhostVariableNames);
+            tc.Error(lhs, $"Cannot assign ghost variable(s) {ghostVars} to non-ghost variable {lhs.DeepAssignedVariable.Name}");
+          }
+        }
+        /* Harun Yılmaz 06.05.2025 */
       }
     }
 
-    public override void AddAssignedIdentifiers(List<IdentifierExpr> vars) {
+    public override void AddAssignedIdentifiers(List<IdentifierExpr> vars)
+    {
       foreach (AssignLhs /*!*/ l in Lhss)
       {
         vars.Add(l.DeepAssignedIdentifier);
@@ -624,7 +646,7 @@ namespace Microsoft.Boogie
       return visitor.VisitAssignCmd(this);
     }
   }
-
+  
   // There are two different kinds of left-hand sides in assignments:
   // simple variables (identifiers), or locations of a map
   [ContractClass(typeof(AssignLhsContracts))]
@@ -2065,6 +2087,26 @@ namespace Microsoft.Boogie
     public override void Typecheck(TypecheckingContext tc)
     {
       (this as ICarriesAttributes).TypecheckAttributes(tc);
+
+      /* Harun Yılmaz 15.05.2025 */
+      // Handle {:ghstbuster} attribute
+      if (this.Attributes != null && this.Attributes.FindBoolAttribute("ghstbuster"))
+      {
+        var collector = new VariableCollector();
+        // Collect all variables used in the expression
+        collector.VisitExpr(this.Expr);
+        var usedVarsFromCollector = collector.usedVars; // Get the collected variables
+
+        foreach (var v in usedVarsFromCollector)
+        {
+          if (v.IsGhost() && !IsInitializedInCurrentProcedure(tc, v))
+          {
+            tc.Error(this, $"Variable {v.Name} used in an assume command is caught by a ghstbuster since it is not initialized.");
+          }
+        }
+      }
+      /* Harun Yılmaz 15.05.2025 */
+
       tc.ExpectedLayerRange = tc.Proc is YieldProcedureDecl decl ? new LayerRange(0, decl.Layer) : null;
       tc.GlobalAccessOnlyInOld = tc.Proc is YieldProcedureDecl;
       Expr.Typecheck(tc);
@@ -2081,6 +2123,64 @@ namespace Microsoft.Boogie
     {
       return visitor.VisitAssumeCmd(this);
     }
+
+    /* Harun Yılmaz 19.05.2025 */
+    private static bool IsInitializedInCurrentProcedure(TypecheckingContext tc, Variable targetVariable)
+    {
+      // Get the current procedure's implementation from the typechecking context
+      Implementation impl = tc.Impl;
+
+      // If no implementation or if targetVariable is null
+      if (impl == null || targetVariable == null)
+      {
+        return false;
+      }
+
+      // Input parameters are already considered assigned by the caller's arguments
+      if (impl.InParams.Contains(targetVariable))
+      {
+        return true;
+      }
+
+      // Iterate through all basic blocks within the procedure's implementation
+      // A procedure body is typically structured as a control-flow graph of blocks
+      foreach (var block in impl.Blocks)
+      {
+        // Iterate through all commands within the current basic block
+        foreach (var cmd in block.Cmds)
+        {
+          // Check if any assignment is made via AssignCmd            
+          if (cmd is AssignCmd assignCmd)
+          {
+            // An AssignCmd can have multiple left-hand sides (for parallel assignments)
+            foreach (var lhs in assignCmd.Lhss)
+            {
+              // DeepAssignedVariable gets the actual variable being assigned
+              if (lhs.DeepAssignedVariable == targetVariable)
+              {
+                return true; // Found an assignment to the target variable
+              }
+            }
+          }
+          // Check if any assignment is made via HavocCmd
+          else if (cmd is HavocCmd havocCmd)
+          {
+            // Iterate through all variables that are being "havoced".
+            foreach (var havoccedVarExpr in havocCmd.Vars)
+            {
+              // havoccedVarExpr is an IdentifierExpr; .Decl gets the Variable object.
+              if (havoccedVarExpr.Decl == targetVariable)
+              {
+                return true;
+              }
+            }
+          }
+          // Note: Other command types could potentially assign to variables
+        }
+      }
+      return false;
+    }
+    /* Harun Yılmaz 19.05.2025 */
   }
 
   public class ReturnExprCmd : ReturnCmd
